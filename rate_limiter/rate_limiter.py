@@ -19,16 +19,13 @@ import flask
 from flask import request
 
 
-class UserDecorators():
+class Rate_Limiter():
     def __init__(self, rate, period):
         self.rate = rate; # unit: messages
         self.period  = period; # unit: seconds
         self.allowance = rate; # unit: messages
-        #self.last_check = time.time();
         self.rate_over_period = self.rate / self.period
         self.user_allowances = {}
-        #print(self.last_check)
-        print("init done")
 
     def get_user_allowance(self, user_id):
         if user_id not in self.user_allowances.keys():
@@ -43,7 +40,7 @@ class UserDecorators():
 
 
     def __call__(self, func):
-        def run_function_if_green(*args, **kwargs):
+        def rate_limiter_wrapper(*args, **kwargs):
             #print("user_id")
             #rate_over_period = self.rate / self.period
             user_id = str(request.environ.get('HTTP_X_REAL_IP', request.remote_addr))
@@ -77,7 +74,7 @@ class UserDecorators():
                 allowance -= 1.0
                 self.set_user_allowance(user_id, allowance, current)
                 return func()
-        return run_function_if_green
+        return rate_limiter_wrapper
 
 
 
