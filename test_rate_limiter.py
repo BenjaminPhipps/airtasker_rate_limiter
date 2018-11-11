@@ -28,7 +28,7 @@ class Rate_Limit_Tests(unittest.TestCase):
             time_now.return_value = current_time
             result = self.app.get(request_path, environ_base=user_1) 
             self.assertEqual(result.status_code, 429)
-            print("result is: ", result.data)
+            
             wait_time = refill_period - current_time #real equation is (wait_time = period + last_refill  - current_time) but last_refill was at time 0
             expected = 'too soon, try again in '+str(wait_time)
             self.assertEqual(result.data, expected.encode("utf-8"))

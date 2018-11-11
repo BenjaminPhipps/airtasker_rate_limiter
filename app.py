@@ -42,7 +42,6 @@ def test_handler_5():
 
 
 def main():
-    print("started")
     app.run()
 
 

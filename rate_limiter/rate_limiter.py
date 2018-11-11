@@ -52,5 +52,4 @@ class Rate_Limiter():
 
 
 if __name__ == "__main__":
-    print("in main of rate_limiter.py")
     pass
