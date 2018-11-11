@@ -1,81 +1,54 @@
-# The task is to produce a rate-limiting module that stops a particular requestor from making too many http requests within a particular period of time.
-
-# The module should expose a method that keeps track of requests and limits it such that a requester can only make 100 requests per hour. 
-#After the limit has been reached, return a 429 with the text "Rate limit exceeded. Try again in #{n} seconds".
-
-# Although you are only required to implement the strategy described above, it should be easy to extend the rate limiting module to take on different rate-limiting strategies.
-
-# How you do this is up to you. Think about how easy your rate limiter will be to maintain and control. Write what you consider to be production-quality code, with comments and tests if and when you consider them necessary.
-
-# import time
-
-
-
-
 import time
-import threading #us this
+import threading 
 import flask
-#from flask import current_app as app
 from flask import request
 
 
 class Rate_Limiter():
-    def __init__(self, rate, period):
-        self.rate = rate; # unit: messages
-        self.period  = period; # unit: seconds
-        self.allowance = rate; # unit: messages
-        self.rate_over_period = self.rate / self.period
-        self.user_allowances = {}
+    def __init__(self, max_amount, refill_amount, refill_period):
+        self.max_amount = max_amount # Max amount of requests that a user can accumulate when not making requests
+        self.refill_period = refill_period # How often the user gets new a new allowance of requests to make in seconds
+        self.refill_amount = refill_amount # How many requests the user gets every refill_period
+        self.user_allowances = {} # The dictionary storing users current allowances and when they last had they allowance refilled
+        self.lock = threading.Lock() # A simple lock in order to make this class threadsafe, 
+                                     # this could cause scaling issues but only one python thread can execute at any one time regardless of this lock
 
-    def get_user_allowance(self, user_id):
+    #refills the bucket of a given user at a given time
+    #if a bucket for the user does not exist, it is created
+    def refill(self, user_id, current_time): 
         if user_id not in self.user_allowances.keys():
-            self.user_allowances[user_id] = {'allowance': self.allowance, 'last_check': time.time()}
-        return self.user_allowances[user_id]
+            self.user_allowances[user_id] = {'allowance': self.max_amount, 'last_refill': current_time}
 
-    def set_user_allowance(self, user_id, allowance, last_check):
-        self.user_allowances[user_id]['allowance'] = allowance
-        print("new allowance is: ", self.user_allowances[user_id]['allowance'])
-        self.user_allowances[user_id]['last_check'] = last_check
-        print("last checked: ", self.user_allowances[user_id]['last_check'])
+        refill_count = int((current_time - self.user_allowances[user_id]['last_refill'] ) / self.refill_period)
+        self.user_allowances[user_id]['allowance'] = min(
+            self.max_amount,
+            self.user_allowances[user_id]['allowance'] + refill_count * self.refill_amount
+        )
+        self.user_allowances[user_id]['last_refill'] = min(
+            current_time, 
+            self.user_allowances[user_id]['last_refill'] + refill_count * self.refill_period
+        )
 
-
+    #this is the actual rate limiter function, it is written as a decorator for ease of use
     def __call__(self, func):
         def rate_limiter_wrapper(*args, **kwargs):
-            #print("user_id")
-            #rate_over_period = self.rate / self.period
             user_id = str(request.environ.get('HTTP_X_REAL_IP', request.remote_addr))
-            #user_id = "blah"
-            print("user_id is: ", user_id)
-            user_allowance = self.get_user_allowance(user_id)
-            last_check = user_allowance['last_check']
-            current = time.time()
-            time_passed = current - last_check
-            print("initial allowance is: ", user_allowance['allowance'])
-            allowance = (time_passed * self.rate_over_period) + user_allowance['allowance']
-            print("allowance is ", allowance)
-            print("rate is ", self.rate)
-            if (allowance > self.rate):
-                print("throttleing now")
-                allowance = self.rate; #throttle
-            if (allowance < 1.0):
-                print("equation is ", (1.0 - allowance), self.rate_over_period)
-                wait_time = (1.0 - allowance) / self.rate_over_period
+            self.lock.acquire()
+            current_time = time.time()
+            self.refill(user_id, current_time)
+ 
+            if (self.user_allowances[user_id]['allowance'] < 1.0):
+                self.lock.release()
+                wait_time = self.refill_period + self.user_allowances[user_id]['last_refill']  - current_time
                 message = "too soon, try again in " + str(wait_time)
-                #return {"message":message, "status": 429}
-                #print("too soon, try again in ", wait_time)
-                #return  jsonify({"message": message}), 429
-                # with self.app.app_context():
-                #resp = flask.make_response({"message": message}, 429)
                 resp = flask.make_response(message, 429)
                 return resp 
-                #return 429
             else:
-                #self.allowance -= 1.0;
-                allowance -= 1.0
-                self.set_user_allowance(user_id, allowance, current)
+                self.user_allowances[user_id]['allowance'] -= 1.0
+                self.user_allowances[user_id]['last_refill'] = current_time
+                self.lock.release()
                 return func()
         return rate_limiter_wrapper
-
 
 
 if __name__ == "__main__":
