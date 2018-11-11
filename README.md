@@ -2,13 +2,13 @@
 
 How to use:
 
--Import the package
+- Import the package
 e.g. "from rate_limiter import rate_limiter"
 
--Construct an object from the class Rate_Limiter, constructor arguments are max_amount, refill_amount and refill_period (in that order)
+- Construct an object from the class Rate_Limiter, constructor arguments are max_amount, refill_amount and refill_period (in that order)
 e.g. "rate_limit_1 = rate_limiter.Rate_Limiter(1.0, 1.0, 8.0)"
 
--Use the object to decorate a flask route function
+- Use the object to decorate a flask route function
 e.g. """
 @app.route('/test_1', endpoint='test_handler_1')
 @rate_limit_1
